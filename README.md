@@ -1,1 +1,4 @@
-# swiss-exercise
+### Exercise description
+
+Write a command line tool to analyze the content of log files. The tool should accept arguments as input and return 
+an output after having performed operations on the given input.
