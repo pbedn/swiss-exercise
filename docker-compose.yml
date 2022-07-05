@@ -1,0 +1,9 @@
+version: '3'
+
+services:
+  cli:
+    build: .
+    command: -i /tests/res/access.log -m -l -e -t -o res.txt
+    volumes:
+      - ./src:/app
+      - ./tests:/tests
