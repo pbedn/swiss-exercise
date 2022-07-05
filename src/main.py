@@ -4,6 +4,8 @@ import logging
 
 import pandas
 
+logging.basicConfig(level=logging.INFO)
+
 DF_NAMES = ["timestamp", "header_bytes", "client_ip",
             "http_resp_code", "resp_size_bytes", "http_req_meth",
             "url", "username", "access_dest_ip", "res_type"]
@@ -15,31 +17,30 @@ def main(args):
     Args:
         args: Populated namespace with arguments.
     """
-
     input_files = read_input(args.input_path)
     parsed_data = parse_squid_log_file(input_files)
 
-    result_dct = dict()
-
     if args.most_freq_ip:
-        result_dct["most_freq_ip"] = calculate_most_freq_ip()
-        print("Most frequent IP", result_dct["most_freq_ip"])
+        most_freq_ip = calculate_most_freq_ip(parsed_data)
+        print("Most frequent IP", most_freq_ip)
+        save_output("Most frequent IP", most_freq_ip, args.output_path)
 
     if args.least_freq_ip:
-        result_dct["least_freq_ip"] = calculate_least_freq_ip()
-        print("Least frequent IP", result_dct["least_freq_ip"])
+        least_freq_ip = calculate_least_freq_ip(parsed_data)
+        print("Least frequent IP", least_freq_ip)
+        save_output("Least frequent IP", least_freq_ip, args.output_path)
 
     if args.least_freq_ip:
-        result_dct["events_sec"] = calculate_events_sec()
-        print("Events per second", result_dct["events_sec"])
+        events_sec = calculate_events_sec(parsed_data)
+        print("Events per second", events_sec)
+        save_output("Events per second", str(events_sec), args.output_path)
 
     if args.least_freq_ip:
-        result_dct["total_bytes"] = calculate_total_bytes()
-        print("Total amount of bytes exchanged", result_dct["total_bytes"])
+        total_bytes = calculate_total_bytes(parsed_data)
+        print("Total amount of bytes exchanged", total_bytes)
+        save_output("Total amount of bytes exchanged", str(total_bytes), args.output_path)
 
-    if result_dct:
-        save_output(result_dct, args.output_path)
-        print(f"Output saved to {args.output_path}")
+    logging.info("Results saved to %s", args.output_path)
 
 
 def read_input(input_path):
@@ -55,24 +56,29 @@ def read_input(input_path):
     """
     res = []
     for fpath in input_path:
+        logging.info("%s", os.path.abspath(fpath))
         if os.path.isfile(fpath):
             res.append(fpath)
         elif os.path.isdir(fpath):
-            files = os.listdir(fpath)
+            files = [os.path.join(fpath, f) for f in os.listdir(fpath)]
             res.extend(files)
         else:
             logging.error("Path does not exist: %s", fpath)
+    if not res:
+        exit()
     return res
 
 
-def save_output(dct, output):
+def save_output(description, result, output):
     """Save operations result to output file.
 
     Args:
-        dct (dict): Operations result.
+        description (str): Operations description.
+        result (str): Operations result.
         output (str): Output path.
     """
-    logging.info("Results saved to %s", output)
+    with open(output, 'a') as fout:
+        fout.write(f"{description}: {result}\n")
 
 
 def parse_squid_log_file(files):
@@ -86,6 +92,7 @@ def parse_squid_log_file(files):
     """
     df = pandas.DataFrame()
     for file_path in files:
+        logging.info("Processing: %s", file_path)
         new_df = pandas.read_csv(file_path,
                                  delim_whitespace=True,
                                  engine="python",
@@ -96,24 +103,64 @@ def parse_squid_log_file(files):
     return df
 
 
-def calculate_most_freq_ip():
-    """Calculate most frequent IP."""
-    return 0
+def calculate_most_freq_ip(df):
+    """Calculate most frequent IP.
+
+    Args:
+        df: Pandas Dataframe.
+
+    Returns:
+        str: Most frequent IP.
+    """
+    return df['client_ip'].value_counts().index[0]
 
 
-def calculate_least_freq_ip():
-    """Calculate least frequent IP."""
-    return 0
+def calculate_least_freq_ip(df):
+    """Calculate least frequent IP.
+
+    Args:
+        df: Pandas Dataframe.
+
+    Returns:
+        str: Least frequent IP.
+    """
+    return df['client_ip'].value_counts().index[-1]
 
 
-def calculate_events_sec():
-    """Calculate events per second."""
-    return 0
+def calculate_events_sec(df):
+    """Average number of EPS in 24-hour period.
+
+    Assumption: Logs are from 24-hour period
+
+    Source: https://www.ccexpert.us/security-monitoring/determining-your-events-per-second.html
+    Step 1 Gather the logs for one or more 24-hour periods.
+    Step 2 Count the number of lines in the file or files.
+    Step 3 Divide the number of lines by the number of 24-hour periods the file contains.
+    Step 4 Divide this number by 86,400.
+
+    Args:
+        df: Pandas Dataframe.
+
+    Returns:
+        int: Events per second.
+    """
+    df["time"] = pandas.to_datetime(df["timestamp"], unit='s')
+    df["time"].dt.to_period("D")
+    number_of_groups = df.groupby(pandas.Grouper(key='time', axis=0, freq='D')).ngroups
+    return df.shape[0] / number_of_groups / 86400
 
 
-def calculate_total_bytes():
-    """Calculate total amount of bytes exchanged."""
-    return 0
+def calculate_total_bytes(df):
+    """Calculate total amount of bytes exchanged.
+
+    Args:
+        df: Pandas Dataframe.
+
+    Returns:
+        int: Total amount of bytes exchanged.
+    """
+    df_sum = df[["header_bytes", "resp_size_bytes"]].sum()
+    return df_sum["header_bytes"] + df_sum["resp_size_bytes"]
 
 
 def get_argument_parser():
@@ -127,6 +174,7 @@ def get_argument_parser():
         action="store",
         dest="input_path",
         nargs='+',
+        required=True,
         help="Path to one or more plain text files, or a directory",
     )
     parser.add_argument(
@@ -134,6 +182,7 @@ def get_argument_parser():
         "--output",
         action="store",
         dest="output_path",
+        required=True,
         help="Path to a file to save output in plain text JSON format",
     )
     parser.add_argument(
