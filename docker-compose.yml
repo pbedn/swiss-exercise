@@ -3,7 +3,7 @@ version: '3'
 services:
   cli:
     build: .
-    command: -i /tests/res/access.log -m -l -e -t -o res.txt
+    command: -i /tests/access.log -m -l -e -t -o /tests/res.txt
     volumes:
       - ./src:/app
       - ./tests:/tests
