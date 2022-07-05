@@ -2,11 +2,22 @@ import os
 import argparse
 import logging
 
+import pandas
+
+DF_NAMES = ["timestamp", "header_bytes", "client_ip",
+            "http_resp_code", "resp_size_bytes", "http_req_meth",
+            "url", "username", "access_dest_ip", "res_type"]
+
 
 def main(args):
-    """"Main function"""
+    """Analyze the content of log files.
+
+    Args:
+        args: Populated namespace with arguments.
+    """
 
     input_files = read_input(args.input_path)
+    parsed_data = parse_squid_log_file(input_files)
 
     result_dct = dict()
 
@@ -62,6 +73,27 @@ def save_output(dct, output):
         output (str): Output path.
     """
     logging.info("Results saved to %s", output)
+
+
+def parse_squid_log_file(files):
+    """Read log files into pandas Dataframe.
+
+    Args:
+        files (list):
+
+    Returns:
+        dataframe: Log files pandas Dataframe format
+    """
+    df = pandas.DataFrame()
+    for file_path in files:
+        new_df = pandas.read_csv(file_path,
+                                 delim_whitespace=True,
+                                 engine="python",
+                                 on_bad_lines="warn",
+                                 header=None,
+                                 names=DF_NAMES)
+        df = pandas.concat([df, new_df], axis=0)
+    return df
 
 
 def calculate_most_freq_ip():
